@@ -1,0 +1,9 @@
+streamlit
+pandas
+scikit-learn
+joblib
+py3Dmol
+stmol
+rdkit
+numpy<2
+ipython_genutils
