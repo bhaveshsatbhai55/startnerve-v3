@@ -1,157 +1,132 @@
 import streamlit as st
-import rdkit
-from rdkit import Chem
-from rdkit.Chem import Descriptors, Draw, AllChem
 import pandas as pd
-import py3Dmol
-from stmol import showmol
-import joblib  # This is the tool that loads your AI Brain
-import os
+import numpy as np
+import pickle
+from rdkit import Chem
+from rdkit.Chem import Descriptors, AllChem
 
-# --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="StartNerve Bio-Engine", page_icon="🧬", layout="wide")
+# ---------------------------------------------------------
+# 🎨 PAGE CONFIGURATION (Modern UI)
+# ---------------------------------------------------------
+st.set_page_config(page_title="StartNerve AI", page_icon="🧬", layout="centered")
 
-# --- LOAD THE AI BRAIN ---
+# Custom CSS for the "Pro" look
+st.markdown("""
+    <style>
+    .main-header {font-size: 3rem; color: #4F46E5; text-align: center; font-weight: 800;}
+    .sub-header {font-size: 1.2rem; color: #6B7280; text-align: center; margin-bottom: 2rem;}
+    .card {padding: 1.5rem; border-radius: 10px; background-color: #f3f4f6; margin-bottom: 1rem; border-left: 5px solid #4F46E5;}
+    .safe {background-color: #D1FAE5; color: #065F46; padding: 10px; border-radius: 5px; font-weight: bold; text-align: center;}
+    .toxic {background-color: #FEE2E2; color: #991B1B; padding: 10px; border-radius: 5px; font-weight: bold; text-align: center;}
+    </style>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 🧠 LOAD THE BRAINS (Solubility + Toxicity)
+# ---------------------------------------------------------
 @st.cache_resource
-def load_brain():
+def load_models():
+    # Load Brain 1: Solubility
     try:
-        # We try to load the brain you trained
-        model = joblib.load("models/solubility_model.pkl")
-        return model
+        with open('model.pkl', 'rb') as f:
+            sol_model = pickle.load(f)
     except:
-        return None
-
-ai_model = load_brain()
-
-# --- SIDEBAR: THE COMMAND CENTER ---
-# Logic to change status based on if brain is found
-if ai_model:
-    sidebar_title = "🧬 StartNerve v3.7 (AI Online)"
-    status_msg = "✅ AI Brain Active (Accuracy: 97.8%)"
-else:
-    sidebar_title = "🧬 StartNerve v3.7 (Offline)"
-    status_msg = "⚠️ AI Model Not Found (Run train_brain.py)"
-
-st.sidebar.title(sidebar_title)
-st.sidebar.markdown("### 🧪 Simulation Parameters")
-
-# 1. INPUT SCAFFOLD
-with st.sidebar.expander("1. Core Molecule", expanded=True):
-    scaffold_input = st.text_input("SMILES Code", value="c1ccccc1", help="Enter the base chemical structure.")
-
-# 2. THE WARHEADS
-with st.sidebar.expander("2. Chemical 'Warheads'"):
-    st.write("Select functional groups to attach:")
-    warhead_options = {
-        "Methyl (-CH3)": "C",
-        "Hydroxyl (-OH)": "O",
-        "Amine (-NH2)": "N",
-        "Fluorine (-F)": "F",
-        "Chlorine (-Cl)": "Cl",
-        "Trifluoromethyl (-CF3)": "C(F)(F)F"
-    }
+        sol_model = None
     
-    selected_names = st.multiselect(
-        "Library Building Blocks",
-        list(warhead_options.keys()),
-        default=["Methyl (-CH3)", "Hydroxyl (-OH)", "Fluorine (-F)"]
-    )
+    # Load Brain 2: Toxicity Hunter (NEW)
+    try:
+        with open('toxicity_model.pkl', 'rb') as f:
+            tox_model = pickle.load(f)
+    except:
+        tox_model = None
+        
+    return sol_model, tox_model
 
-# 3. FILTERS
-with st.sidebar.expander("3. 'Lipinski' Filters"):
-    max_mw = st.slider("Max MW", 100, 800, 500)
-    max_logp = st.slider("Max LogP", -2.0, 7.0, 5.0)
+solubility_model, toxicity_model = load_models()
 
-run_btn = st.sidebar.button("🚀 RUN PREDICTION ENGINE", type="primary")
-
-# --- MAIN DASHBOARD ---
-st.title("StartNerve: AI-Powered Drug Discovery")
-st.markdown(f"**Status:** {status_msg} | **Target:** `{scaffold_input}`")
-
-if run_btn:
-    st.write("---")
-    progress_bar = st.progress(0)
+# ---------------------------------------------------------
+# 🧪 HELPER FUNCTIONS (The Science)
+# ---------------------------------------------------------
+def generate_descriptors(smiles):
+    """Generates the 4 inputs needed for Solubility (LogS)"""
+    mol = Chem.MolFromSmiles(smiles)
+    if not mol: return None
     
-    valid_mols = []
-    all_data = []
+    logp = Descriptors.MolLogP(mol)
+    mw = Descriptors.MolWt(mol)
+    rb = Descriptors.NumRotatableBonds(mol)
+    ap = Descriptors.MolLogP(mol) / Descriptors.MolWt(mol) # Simplified aromatic proxy
+    
+    return np.array([[logp, mw, rb, ap]])
 
-    # GENERATION LOOP
-    for i, name in enumerate(selected_names):
-        progress_bar.progress((i + 1) / len(selected_names))
-        
-        group_smiles = warhead_options[name]
-        new_smiles = scaffold_input + group_smiles
-        mol = Chem.MolFromSmiles(new_smiles)
-        
-        if mol:
-            # 1. 3D PREP
-            mol_3d = Chem.AddHs(mol)
-            AllChem.EmbedMolecule(mol_3d, randomSeed=42)
-            
-            # 2. EXTRACT FEATURES (The Input for the AI)
-            # We must calculate exactly what the AI learned: MW, LogP, Donors, Acceptors
-            mw = Descriptors.MolWt(mol)
-            logp = Descriptors.MolLogP(mol)
-            h_donors = Descriptors.NumHDonors(mol)
-            h_acceptors = Descriptors.NumHAcceptors(mol)
-            
-            # 3. AI PREDICTION (The Brain)
-            ai_prediction = "N/A"
-            if ai_model:
-                # Ask the brain: "Based on these 4 numbers, what is the solubility?"
-                features = [[mw, logp, h_donors, h_acceptors]]
-                pred_val = ai_model.predict(features)[0]
-                ai_prediction = round(pred_val, 2)
-            
-            # 4. FILTER
-            status = "FAIL"
-            if mw <= max_mw and logp <= max_logp:
-                status = "PASS"
-                valid_mols.append(mol)
+def generate_fingerprint(smiles):
+    """Generates the 2048-bit vector for Toxicity Hunter"""
+    mol = Chem.MolFromSmiles(smiles)
+    if not mol: return None
+    return np.array([list(AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=2048))])
+
+# ---------------------------------------------------------
+# 🖥️ THE INTERFACE
+# ---------------------------------------------------------
+st.markdown('<div class="main-header">StartNerve AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Digital Drug Discovery • Solubility & Toxicity Screening</div>', unsafe_allow_html=True)
+
+# Input Section
+smiles_input = st.text_input("Enter Molecule SMILES Code", placeholder="e.g. CC(=O)OC1=CC=CC=C1C(=O)O (Aspirin)")
+
+if st.button("🚀 Analyze Molecule"):
+    if not smiles_input:
+        st.warning("Please enter a SMILES string first.")
+    else:
+        # Check if Models are Loaded
+        if solubility_model is None or toxicity_model is None:
+            st.error("⚠️ System Error: Brains not found. Please ensure 'model.pkl' and 'toxicity_model.pkl' are in the folder.")
+        else:
+            # 1. VISUALIZE
+            mol = Chem.MolFromSmiles(smiles_input)
+            if not mol:
+                st.error("❌ Invalid Chemical Structure. Please check the SMILES code.")
+            else:
+                st.image(Chem.Draw.MolToImage(mol), caption="Molecular Structure", width=300)
+
+                # 2. RUN BRAIN 1 (Solubility)
+                desc_vec = generate_descriptors(smiles_input)
+                sol_pred = solubility_model.predict(desc_vec)[0]
                 
-            all_data.append({
-                "Name": f"Variant {i+1}",
-                "Modification": name,
-                "SMILES": new_smiles,
-                "MW": round(mw, 2),
-                "LogP (Calc)": round(logp, 2),
-                "AI Solubility": ai_prediction, # <--- The New AI Column
-                "Status": status,
-                "Mol3D": mol_3d
-            })
+                # 3. RUN BRAIN 2 (Toxicity)
+                fp_vec = generate_fingerprint(smiles_input)
+                tox_prob = toxicity_model.predict_proba(fp_vec)[0] # Returns [Prob_Toxic, Prob_Safe]
+                
+                # Decision Logic
+                # If Safe probability > 50%, it's safe.
+                is_safe = tox_prob[1] > 0.5 
+                safety_score = tox_prob[1] * 100
 
-    st.success(f"Prediction Complete. {len(valid_mols)} Candidates Generated.")
-    
-    # --- RESULTS TABS ---
-    tab1, tab2, tab3 = st.tabs(["⚗️ 2D Grid", "🧊 Interactive 3D", "📊 AI Data Report"])
-    
-    with tab1:
-        st.write("### 2D Structure Overview")
-        if valid_mols:
-            st.image(Draw.MolsToGridImage(valid_mols, molsPerRow=4, subImgSize=(250, 250)), width="stretch" if valid_mols else None)
+                # 4. REPORT CARD
+                st.write("---")
+                st.subheader("🔍 Analysis Report")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**💧 Solubility Prediction**")
+                    st.info(f"LogS: {sol_pred:.2f}")
+                    if sol_pred > -4:
+                        st.write("✅ **Highly Soluble** (Good for pills)")
+                    else:
+                        st.write("⚠️ **Low Solubility** (Might need injection)")
+                        
+                with col2:
+                    st.markdown("**💀 Toxicity Hunter**")
+                    if is_safe:
+                        st.markdown(f'<div class="safe">✅ LIKELY SAFE ({safety_score:.1f}%)</div>', unsafe_allow_html=True)
+                        st.write("Passed in-silico toxicity screen.")
+                    else:
+                        st.markdown(f'<div class="toxic">⚠️ POTENTIAL TOXICITY</div>', unsafe_allow_html=True)
+                        st.write("Structural alerts detected.")
 
-    with tab2:
-        st.write("### 3D Molecular Viewer")
-        st.info("Select a molecule to inspect.")
-        df = pd.DataFrame(all_data)
-        if not df.empty:
-            choice = st.selectbox("Select Candidate", df["Name"] + " (" + df["Modification"] + ")")
-            selected_row = df[df["Name"] == choice.split(" (")[0]].iloc[0]
-            
-            view = py3Dmol.view(width=800, height=500)
-            view.addModel(Chem.MolToMolBlock(selected_row["Mol3D"]), 'mol')
-            view.setStyle({'stick': {}})
-            view.setBackgroundColor('white')
-            view.zoomTo()
-            showmol(view, height=500, width=800)
+                st.write("---")
+                st.caption("Disclaimer: StartNerve AI is a research tool. Predictions are based on Tox21 & ClinTox datasets. Always verify in a wet lab.")
 
-    with tab3:
-        st.write("### AI Prediction Analysis")
-        # Remove the 3D object column so the table looks clean
-        display_df = df.drop(columns=["Mol3D"])
-        
-        # Color code the PASS/FAIL column
-        st.dataframe(
-            display_df.style.map(lambda x: 'color: green' if x == 'PASS' else 'color: red', subset=['Status']),
-            use_container_width=True
-        )
+# Footer
+st.markdown("<br><hr><center>Built by StartNerve Technologies • Pune, India</center>", unsafe_allow_html=True)
