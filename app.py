@@ -3,14 +3,13 @@ import pandas as pd
 import numpy as np
 import pickle
 from rdkit import Chem
-from rdkit.Chem import Descriptors, AllChem
+from rdkit.Chem import Descriptors, AllChem, Draw # <--- ADDED 'Draw' HERE
 
 # ---------------------------------------------------------
 # 🎨 PAGE CONFIGURATION
 # ---------------------------------------------------------
 st.set_page_config(page_title="StartNerve Phase 2", page_icon="🧬", layout="centered")
 
-# FIX: We use st.markdown with unsafe_allow_html=True to render the CSS
 st.markdown("""
     <style>
     .main-header {font-size: 3rem; color: #4F46E5; text-align: center; font-weight: 800;}
@@ -55,7 +54,8 @@ else:
     if st.button("Analyze Molecule"):
         mol = Chem.MolFromSmiles(smiles_input)
         if mol:
-            st.image(Chem.Draw.MolToImage(mol), width=300)
+            # FIX: Now Draw is imported, so this works!
+            st.image(Draw.MolToImage(mol), width=300, caption="Chemical Structure")
             
             # Prediction 1: Solubility
             logp = Descriptors.MolLogP(mol)
@@ -66,7 +66,7 @@ else:
             
             # Prediction 2: Toxicity
             fp = np.array([list(AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=2048))])
-            tox_prob = toxicity_model.predict_proba(fp)[0][1] # Probability of being safe (1)
+            tox_prob = toxicity_model.predict_proba(fp)[0][1] # Probability of being safe
             
             # Display
             c1, c2 = st.columns(2)
