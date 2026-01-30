@@ -8,7 +8,7 @@ from rdkit.Chem import Descriptors, AllChem
 # ---------------------------------------------------------
 # 🎨 PAGE CONFIGURATION (Modern UI)
 # ---------------------------------------------------------
-st.set_page_config(page_title="StartNerve AI", page_icon="🧬", layout="centered")
+st.set_page_config(page_title="StartNerve Phase 2", page_icon="🧬", layout="centered")
 
 # Custom CSS for the "Pro" look
 st.markdown("""
