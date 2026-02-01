@@ -16,7 +16,15 @@ st.markdown("""
     .sub-header {font-size: 1rem; color: #6B7280; margin-bottom: 2rem;}
     .card-safe {background-color: #ECFDF5; border: 1px solid #10B981; padding: 15px; border-radius: 8px; color: #065F46; font-weight: bold;}
     .card-danger {background-color: #FEF2F2; border: 1px solid #EF4444; padding: 15px; border-radius: 8px; color: #991B1B; font-weight: bold;}
-    .metric-box {text-align: center; padding: 10px; background: #F3F4F6; border-radius: 5px; margin: 5px;}
+    .metric-box {
+    text-align: center; 
+    padding: 10px; 
+    background: #F3F4F6; 
+    border-radius: 5px; 
+    margin: 5px; 
+    color: #000000 !important; /* Force Black Text */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Added a subtle shadow for pop */
+}
     </style>
 """, unsafe_allow_html=True)
 
