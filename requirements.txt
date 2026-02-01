@@ -7,3 +7,5 @@ stmol
 rdkit
 numpy<2
 ipython_genutils
+ipyspeck
+ipywidgets
