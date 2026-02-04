@@ -6,6 +6,13 @@ from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors, DataStructs, Draw
 from stmol import showmol
 import py3Dmol
+import sys
+import os
+
+# --- IMPORT PDF GENERATOR FROM PARENT FOLDER ---
+# This trick allows us to import 'utils.py' which is one folder up
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import generate_pdf
 
 # ---------------------------------------------------------
 # 🎨 PAGE CONFIGURATION
@@ -28,7 +35,9 @@ st.markdown("""
 @st.cache_resource
 def load_model():
     try:
-        with open('tox21_model.pkl', 'rb') as f:
+        # Load the model from the parent directory (StartNerve-2.0/tox21_model.pkl)
+        model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tox21_model.pkl')
+        with open(model_path, 'rb') as f:
             model = pickle.load(f)
         return model
     except:
@@ -85,18 +94,31 @@ def find_similarity(target_mol):
                 best_match = name
     return best_match, highest_sim
 
+def predict_single(smiles, model):
+    """Run model on one molecule (Used for Batch Mode)"""
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if not mol: return None, None
+        fp = np.array([list(AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=2048))])
+        preds = model.predict(fp)[0]
+        return mol, preds
+    except:
+        return None, None
+
 # ---------------------------------------------------------
-# 🖥️ DASHBOARD
+# 🖥️ DASHBOARD UI
 # ---------------------------------------------------------
 st.markdown('<div class="main-header">StartNerve Bio-Engine <span style="font-size:1rem; vertical-align:middle; background:#4F46E5; color:white; padding:2px 8px; border-radius:10px;">PRO</span></div>', unsafe_allow_html=True)
 st.write("Advanced In-Silico Toxicology & Market Intelligence Engine")
 
 if tox_model is None:
-    st.error("⚠️ CRITICAL: 'tox21_model.pkl' missing. Please deploy the brain file.")
+    st.error("⚠️ CRITICAL: 'tox21_model.pkl' missing. Please ensure the model file is in the main directory.")
 else:
     tab1, tab2 = st.tabs(["⚗️ Digital Lab (3D)", "📂 Batch Pipeline (CSV)"])
 
-    # === TAB 1: 3D LAB ===
+    # =========================================================
+    # TAB 1: SINGLE MOLECULE LAB (3D + PDF)
+    # =========================================================
     with tab1:
         col_input, col_3d, col_results = st.columns([1.5, 2, 2])
         
@@ -162,14 +184,79 @@ else:
                                 st.markdown(f'<div class="card-danger">⚠️ {label}</div>', unsafe_allow_html=True)
                             st.write("")
                         shown += 1
+                
+                # --- PDF DOWNLOAD SECTION ---
+                st.markdown("---")
+                st.subheader("4. Official Report")
+                # Generate PDF in memory
+                pdf_data = generate_pdf(smiles_input, mw, logp, preds, TASKS, TASK_DESC, match_name, match_score)
+                
+                st.download_button(
+                    label="📥 Download Certificate of Analysis (PDF)",
+                    data=pdf_data,
+                    file_name="StartNerve_Analysis_Report.pdf",
+                    mime="application/pdf",
+                    type="secondary"
+                )
 
-    # === TAB 2: BATCH PIPELINE ===
+    # =========================================================
+    # TAB 2: BATCH PIPELINE (CSV)
+    # =========================================================
     with tab2:
         st.write("### 📂 High-Throughput Screening (HTS)")
+        st.write("Upload a CSV file containing a column named `smiles`. The AI will screen all candidates simultaneously.")
+        
         uploaded_file = st.file_uploader("Upload CSV (Column 'smiles')", type=["csv"])
+        
         if uploaded_file:
             df = pd.read_csv(uploaded_file)
+            
+            # Normalize column names to lowercase to be safe
+            df.columns = [c.lower() for c in df.columns]
+            
             if 'smiles' in df.columns:
-                st.success(f"Processing {len(df)} candidates...")
-                # ... (Batch logic same as before) ...
-                st.info("Batch logic active (hidden for brevity). Download enabled.")
+                st.success(f"Pipeline Active: Processing {len(df)} candidates...")
+                
+                # Run predictions
+                results = []
+                progress_bar = st.progress(0)
+                
+                for index, row in df.iterrows():
+                    mol_batch, preds_batch = predict_single(row['smiles'], tox_model)
+                    
+                    if preds_batch is not None:
+                        # Convert 0/1 to Safe/Toxic for the report
+                        row_data = {'SMILES': row['smiles']}
+                        
+                        # Add Basic Properties
+                        try:
+                            row_data['MW'] = Descriptors.MolWt(mol_batch)
+                            row_data['LogP'] = Descriptors.MolLogP(mol_batch)
+                        except:
+                            pass
+
+                        # Add Toxicity Flags
+                        for i, task in enumerate(TASKS):
+                            if task in TASK_DESC:
+                                row_data[TASK_DESC[task]] = "RISK" if preds_batch[i] == 1 else "Safe"
+                        
+                        results.append(row_data)
+                    
+                    # Update progress
+                    progress_bar.progress((index + 1) / len(df))
+                
+                # Show Result Table
+                res_df = pd.DataFrame(results)
+                st.dataframe(res_df)
+                
+                # DOWNLOAD BUTTON
+                csv = res_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Full Pipeline Report (CSV)",
+                    data=csv,
+                    file_name="StartNerve_HTS_Results.csv",
+                    mime="text/csv",
+                    type="primary"
+                )
+            else:
+                st.error("CSV Error: File must contain a column named 'smiles'.")

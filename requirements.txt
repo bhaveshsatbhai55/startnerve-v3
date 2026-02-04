@@ -5,7 +5,6 @@ joblib
 py3Dmol
 stmol
 rdkit
-numpy<2
+numpy>=2.0.0
+fpdf2
 ipython_genutils
-ipyspeck
-ipywidgets
