@@ -120,11 +120,33 @@ else:
     # TAB 1: SINGLE MOLECULE LAB (3D + PDF)
     # =========================================================
     with tab1:
+        # --- NEW: SIDEBAR CONTROLS (CHEAT SHEET) ---
+        st.sidebar.header("🧪 Quick-Load Examples")
+        st.sidebar.write("Select a molecule to auto-fill for fast demos:")
+        
+        example_molecules = {
+            "Custom Input": "",
+            "Aspirin (Safe Painkiller)": "CC(=O)OC1=CC=CC=C1C(=O)O",
+            "Caffeine (Stimulant)": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+            "DDT (Toxic Pesticide)": "ClC1=CC=C(C(C2=CC=C(Cl)C=C2)C(Cl)(Cl)Cl)C=C1",
+            "Nicotine (Addictive)": "CN1CCC(C1)C2=CN=CC=C2",
+            "Tylenol (Acetaminophen)": "CC(=O)NC1=CC=C(O)C=C1"
+        }
+        
+        selected_example = st.sidebar.selectbox("Choose a Compound:", list(example_molecules.keys()))
+        
+        # Logic: If user picks an example, use that. If "Custom", keep existing default.
+        if selected_example != "Custom Input":
+            default_val = example_molecules[selected_example]
+        else:
+            default_val = "CC(=O)OC1=CC=CC=C1C(=O)O"
+
+        # --- MAIN INPUT & RESULTS ---
         col_input, col_3d, col_results = st.columns([1.5, 2, 2])
         
         with col_input:
             st.subheader("1. Design")
-            smiles_input = st.text_area("Input SMILES:", value="CC(=O)OC1=CC=CC=C1C(=O)O", height=100)
+            smiles_input = st.text_area("Input SMILES:", value=default_val, height=100)
             run_btn = st.button("Run Simulation 🧬", type="primary")
             
             if run_btn:
@@ -205,6 +227,20 @@ else:
     with tab2:
         st.write("### 📂 High-Throughput Screening (HTS)")
         st.write("Upload a CSV file containing a column named `smiles`. The AI will screen all candidates simultaneously.")
+        
+        # --- NEW: SAMPLE DATA BUTTON (The Fix) ---
+        sample_csv = """smiles
+CC(=O)OC1=CC=CC=C1C(=O)O
+CN1C=NC2=C1C(=O)N(C(=O)N2C)C
+ClC1=CC=C(C(C2=CC=C(Cl)C=C2)C(Cl)(Cl)Cl)C=C1
+"""
+        st.download_button(
+            label="📄 Download Sample CSV (For Testing)",
+            data=sample_csv,
+            file_name="startnerve_sample_data.csv",
+            mime="text/csv",
+        )
+        # -------------------------------
         
         uploaded_file = st.file_uploader("Upload CSV (Column 'smiles')", type=["csv"])
         
