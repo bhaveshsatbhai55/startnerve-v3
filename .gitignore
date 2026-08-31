@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pt
+*.pkl
+*.pkl.gz
+*.csv
+*.xlsx
+*.pdf
+*.log
+*.png
+*.pptx
+*.npy
+reports/
+venv/
+.env
