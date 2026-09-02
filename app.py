@@ -40,15 +40,7 @@ except ImportError:
 
 app = Flask(__name__)
 
-# Hardened CORS configuration
-CORS(app, resources={
-    r"/api/*": {
-        "origins": ["*"],
-        "supports_credentials": True,
-        "allow_headers": ["Content-Type", "Authorization"],
-        "methods": ["POST", "GET", "OPTIONS"]
-    }
-})
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Silence favicon 404 warnings
 @app.route('/favicon.ico')
