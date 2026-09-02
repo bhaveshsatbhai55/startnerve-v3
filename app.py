@@ -11,6 +11,7 @@ import os
 import sys
 import io
 import csv
+import urllib.request
 import numpy as np
 from flask import Flask, request, jsonify, send_file, send_from_directory, render_template_string
 from flask_cors import CORS
@@ -40,7 +41,14 @@ except ImportError:
 
 app = Flask(__name__)
 
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
+    return response
 
 # Silence favicon 404 warnings
 @app.route('/favicon.ico')
@@ -289,9 +297,25 @@ def smiles_to_graph(smiles):
         print(f"⚠️ Graph construction skipped for '{smiles}': {e}")
         return None
 
-# MODEL WEIGHTS INITIALIZATION
+# MODEL WEIGHTS INITIALIZATION & DYNAMIC FALLBACK
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_WEIGHTS_PATH = os.path.join(BASE_DIR, "startnerve_v11_best.pt")
+WEIGHTS_URL = "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/download/v1.0/startnerve_v11_best.pt"
+
+def ensure_weights_exist():
+    if not os.path.exists(MODEL_WEIGHTS_PATH):
+        print(f"⚠️ Model weights missing at {MODEL_WEIGHTS_PATH}.")
+        if "YOUR_USERNAME" not in WEIGHTS_URL:
+            print(f"⬇️ Downloading weights from {WEIGHTS_URL}...")
+            try:
+                urllib.request.urlretrieve(WEIGHTS_URL, MODEL_WEIGHTS_PATH)
+                print("✅ Weights downloaded successfully.")
+            except Exception as e:
+                print(f"❌ Failed to download model weights: {e}")
+        else:
+            print("⚠️ URL placeholder active. Expecting model weights from Git LFS.")
+
+ensure_weights_exist()
 
 if HAS_DEEP_LEARNING_CORE:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -306,7 +330,7 @@ if HAS_DEEP_LEARNING_CORE:
             print(f"❌ ARCHITECTURE FAILURE LOADING WEIGHTS: {e}")
             sys.exit(1)
     else:
-        print(f"❌ CRITICAL BREAKDOWN: Core target weights file missing at {MODEL_WEIGHTS_PATH}")
+        print(f"❌ CRITICAL BREAKDOWN: Target weights file unavailable at {MODEL_WEIGHTS_PATH}")
         sys.exit(1)
 
 def run_v11_inference(smiles_input):
@@ -390,8 +414,11 @@ def api_audit():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/audit/batch', methods=['POST'])
+@app.route('/api/audit/batch', methods=['POST', 'OPTIONS'])
 def audit_batch():
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
+
     try:
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file uploaded'}), 400
@@ -433,8 +460,11 @@ def audit_batch():
 REPORTS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'reports')
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-@app.route('/api/export/pdf', methods=['POST'])
+@app.route('/api/export/pdf', methods=['POST', 'OPTIONS'])
 def export_compliance_pdf():
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200
+
     if not HAS_WEASYPRINT:
         return jsonify({'success': False, 'error': 'WeasyPrint library not available on server'}), 500
 
@@ -518,12 +548,13 @@ def serve_report(filename):
 
 if __name__ == '__main__':
     device_name = str(device).upper() if 'device' in globals() else 'CPU'
+    port = int(os.environ.get("PORT", 10000))
     print(f"\n=========================================================================")
     print(f"  STARTNERVE TITAN PREDICTIVE CORE API RUNTIME ENVIRONMENT")
     print(f"=========================================================================")
     print(f"  🛰️  Compute Target Hardware Context: {device_name}")
     print(f"  🧬 Neural Weights Core Status      : ACTIVE REAL WEIGHTS LOADED")
-    print(f"  Local Server Listening at: http://127.0.0.1:5000")
+    print(f"  Server Binding Target              : 0.0.0.0:{port}")
     print(f"=========================================================================\n")
     
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
